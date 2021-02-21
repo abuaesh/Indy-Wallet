@@ -6,7 +6,8 @@
 from indy import pool, ledger, wallet, did, crypto, anoncreds
 from indy.error import IndyError
 from indy.error import PoolLedgerConfigAlreadyExistsError, DidAlreadyExistsError
-from indy.error import PoolIncompatibleProtocolVersion, ErrorCode
+from indy.error import PoolIncompatibleProtocolVersion, ErrorCode, CommonInvalidStructure
+from indy.error import AnoncredsCredDefAlreadyExistsError
 import json
 import asyncio
 import os
@@ -107,32 +108,40 @@ async def setup_rehuman():
             schema_request = await ledger.build_schema_request(issuer['did'], schema)
             schema_request = await add_taaAccept(schema_request, issuer)
             
-            print("\n\nSchema Request:\n")
-            print(str(schema_request)+"\n\n")
-            await ledger.sign_and_submit_request(issuer['pool'], issuer['wallet'], issuer['did'], schema_request)
+            if schema_request['op'] == "REJECT":
+                print("\n\nSchema Request Rejected:\n")
+                print(str(schema_request))
+                print("Perhaps an identical schema already exists on the ledger")
+            else:
+                try:
+                    print(await ledger.sign_and_submit_request(issuer['pool'], issuer['wallet'], issuer['did'], schema_request))
+                except CommonInvalidStructure:
+                    print('Ledger successfully recieved your schema request')
     #############################################################################
         elif choice == '2':       # 2. Create credential defenition
             print("---------------------------------CREATE A CREDENTIAL DEFINITION------------------------------------")
             # Choose the schema you want to create the credential defenition for
-            # Display list of available schemata (Can be retrieved from a Database later, but for now only 3 are available)
+            # from the following list of available schemata:
+            issuer['schemata'] = 
+            [
+                {
+                    'id': 'N5woRhHcnE7BBh3FwsPqFJ:2:Government_ID:0.1',
+                    'name': 'Government ID'
+                },
+                {
+                    'id': 'N5woRhHcnE7BBh3FwsPqFJ:2:Eduaction_Certificate:0.1',
+                    'name': 'Educational Certificate'
+                },
+                {
+                    'id': 'N5woRhHcnE7BBh3FwsPqFJ:2:Record_Of_Employment:0.1',
+                    'name': 'Record of Employment'
+                }
+            ]
             x = 0 #variable to hold user input
             
             while int(x) < 1 or int(x) > len(issuer['schemata']):
-                issuer['schemata'] = [
-                    {
-                        'id': 'N5woRhHcnE7BBh3FwsPqFJ:2:Government_ID:0.1',
-                        'name': 'Government ID'
-                    },
-                    {
-                        'id': 'N5woRhHcnE7BBh3FwsPqFJ:2:Eduaction_Certificate:0.1',
-                        'name': 'Educational Certificate'
-                    },
-                    {
-                        'id': 'N5woRhHcnE7BBh3FwsPqFJ:2:Record_Of_Employment:0.1',
-                        'name': 'Record of Employment'
-                    }
-                ]
                 print("Pick the schema that you want to create the credential defenition for:")
+                # Display list of available schemata (Can be retrieved from a Database later, but for now only 3 are available)
                 for i in range(len(issuer['schemata'])):
                     print(str(i+1) + ': ' + issuer['schemata'][i]['name'])
                 x = input('Please enter any value between 1 and ' + str(len(issuer['schemata'])) + ': ')
@@ -163,7 +172,6 @@ async def setup_rehuman():
                 'type': 'CL',
                 'config': {"support_revocation": revoc}
             }
-            #Append to issuer['credential_definitions'][index]['id'] later
             try:
                 (cred_def_id, cred_def) = \
                     await anoncreds.issuer_create_and_store_credential_def(issuer['wallet'], issuer['did'],
@@ -172,15 +180,34 @@ async def setup_rehuman():
                                                                     json.dumps(cred_def['config']))
                 print('credential definition id: ')
                 print(cred_def_id)
-                
             except AnoncredsCredDefAlreadyExistsError:
                 print("A credential definition already exists in your wallet for this schema.")
+            #Append to list of credential definitions(consider saving to a DB):
+            #issuer['credential_definitions'].append({'id':cred_def_id,'name':cred_def['tag']}) 
 
             print("3. Send new credential definition to ledger")
             cred_def_request = await ledger.build_cred_def_request(issuer['did'], cred_def)
             cred_def_request = await add_taaAccept(cred_def_request, issuer)
-            print(await ledger.sign_and_submit_request(issuer['pool'], issuer['wallet'],issuer['did'], cred_def_request))
-#############################################################################
+            try:
+                print(await ledger.sign_and_submit_request(issuer['pool'], issuer['wallet'],issuer['did'], cred_def_request))
+            except CommonInvalidStructure:
+                print('Ledger successfully recieved your credential definition request')
+    #############################################################################
+        #List of known credential definitions(for now)
+        issuer['credential_definitions']= [
+                        {
+                            'id': 'N5woRhHcnE7BBh3FwsPqFJ:3:CL:188415:GovIDCredDef',
+                            'name': 'Government ID'
+                        },
+                        {
+                            'id': 'N5woRhHcnE7BBh3FwsPqFJ:3:CL:188416:edu_cert_cred_def',
+                            'name': 'Educational Certificate'
+                        },
+                        {
+                            'id': 'N5woRhHcnE7BBh3FwsPqFJ:3:CL:188417:Record_of_employment',
+                            'name': 'Record of Employment'
+                        }
+                        ]
 #############################################################################
 #############################################################################
     
@@ -198,13 +225,13 @@ async def add_taaAccept(request, issuer):
     # 1. Get Latest TAA from ledger
     taa_request = await ledger.build_get_txn_author_agreement_request(issuer['did'], None)
     latest_taa = await ledger.sign_and_submit_request(issuer['pool'], issuer['wallet'], issuer['did'], taa_request)
-    print("\n\nStep A - TAA Retrieved ")
+    print("Step A - TAA Retrieved ")
     #print(latest_taa)
 
     # 2. Get Acceptance Mechanisms List(AML)
     acceptance_mechanism_request = await ledger.build_get_acceptance_mechanisms_request(issuer['did'], None, None)
     aml = await ledger.sign_and_submit_request(issuer['pool'], issuer['wallet'], issuer['did'], acceptance_mechanism_request)
-    print("\n\nStep B - AML Retrieved ")
+    print("Step B - AML Retrieved ")
     #print(json.loads(aml)['result']['data']['aml'])
     
     # 3. Append acceptance to your request
@@ -223,7 +250,7 @@ async def add_taaAccept(request, issuer):
     request = await ledger.append_txn_author_agreement_acceptance_to_request(request, None, None, taa_digest, 'at_submission', timestamp)
     request = await ledger.sign_and_submit_request(issuer['pool'], issuer['wallet'], issuer['did'], request)
 
-    print("\n\nStep C - TAA Appended to your Request ")
+    print("Step C - TAA Appended to your Request ")
     #print(request)
     print("COMPLETED TAA PROCEDURE------------------------------------")
     # 4. Return appended request
