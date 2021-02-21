@@ -49,7 +49,7 @@ async def setup_rehuman():
         'schemata': [] #array holds schemata created by this issuer
     }
     print("\n3. Create wallet\n")
-    await create_wallet(issuer)
+    """await create_wallet(issuer)
 #############################################################################
     # 4. Activate issuer account(endorser DID)
     print("\n4. Create and store DID into wallet")
@@ -57,17 +57,18 @@ async def setup_rehuman():
     try:
         issuer['did'], issuer['key'] = await did.create_and_store_my_did(issuer['wallet'], issuer['did_info']) 
     except DidAlreadyExistsError:
-        print("DID for ", issuer['name'], " already exists.")
+        print("DID for ", issuer['name'], " already exists.")"""
 #############################################################################
     # 5. Issuer connected and active, READY STATE
-    print("\nIssuer in Ready State. \n")
+    print("\nIssuer in Ready State. ==========================================\n")
     print("What do you want to do:")
     # Make it a while loop:
     choice = input("1. Create a new schema\n"+
-        "2. Issue a new credential\n"+
-        "3. Revoke a credential\n")
+        "2. Create a new credential defenition\n"+
+        "3. Issue a credential\n"+
+        "4. Revoke a credential\n")
 #############################################################################
-    if choice == '1':
+    if choice == '1':       # 1. Create a new schema:
         """sch = {
             "name": "Government_ID",
             "version": "0.1",
@@ -101,6 +102,51 @@ async def setup_rehuman():
         print(str(schema_request)+"\n\n")
         print(await ledger.sign_and_submit_request(issuer['pool'], issuer['wallet'], issuer['did'], schema_request))
 #############################################################################
+    elif choice == '2':       # 2. Create credential defenition
+        # Choose the schema you want to create the credential defenition for
+        # Display list of available schemata (Can be retrieved from a Database later, but for now only 3 are available)
+        x = 0 #variable to hold user input
+        print('Cred def...')
+        while int(x) < 1 or int(x) > len(issuer['schemata']):
+            issuer['schemata'] = [
+                {
+                    'schema_id': 'N5woRhHcnE7BBh3FwsPqFJ:2:Government_ID:0.1',
+                    'schema_name': 'Government ID Schema'
+                },
+                {
+                    'schema_id': 'N5woRhHcnE7BBh3FwsPqFJ:2:Eduaction_Certificate:0.1',
+                    'schema_name': 'Educational Certificate Schema'
+                },
+                {
+                    'schema_id': 'N5woRhHcnE7BBh3FwsPqFJ:2:Record_Of_Employment:0.1',
+                    'schema_name': 'Record of Employment Schema'
+                }
+            ]
+            print("Pick the schema that you want to create the credential defenition for:")
+            for i in range(len(issuer['schemata'])):
+                print(str(i+1) + ': ' + issuer['schemata'][i]['schema_name'])
+            x = input('Please enter any value between 1 and ' + str(len(issuer['schemata'])) + ': ')
+
+        schema_id = issuer['schemata'][int(x)-1]['schema_id']
+        print(schema_id)
+
+        """(faber['transcript_schema_id'], faber['transcript_schema']) = \
+            await get_schema(faber['pool'], faber['did'], transcript_schema_id)
+
+        logger.info("\"Faber\" -> Create and store in Wallet \"Faber Transcript\" Credential Definition")
+        transcript_cred_def = {
+            'tag': 'TAG1',
+            'type': 'CL',
+            'config': {"support_revocation": False}
+        }
+        (faber['transcript_cred_def_id'], faber['transcript_cred_def']) = \
+            await anoncreds.issuer_create_and_store_credential_def(faber['wallet'], faber['did'],
+                                                                faber['transcript_schema'], transcript_cred_def['tag'],
+                                                                transcript_cred_def['type'],
+                                                                json.dumps(transcript_cred_def['config']))
+
+        logger.info("\"Faber\" -> Send  \"Faber Transcript\" Credential Definition to Ledger")
+        await send_cred_def(faber['pool'], faber['wallet'], faber['did'], faber['transcript_cred_def'])"""
 #############################################################################
 async def add_taaAccept(request, issuer):
 
