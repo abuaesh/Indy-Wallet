@@ -93,7 +93,10 @@ async def ready():
             await send_credential_offer()
         #############################################################################
         else:
-            print("Invalid choice. Try again.")
+            if choice != '0':
+                print("Invalid choice. Try again.")
+            else:
+                print("Shutting down..")
     #############################################################################
     # Close Server Application
     print("Close and Delete wallet")
@@ -215,7 +218,7 @@ async def send_credential_offer():
     # from the list of available credential definitions: issuer['credential definitions']
     x = 0 # variable to hold user input
     while int(x) < 1 or int(x) > len(issuer['credential_definitions']):
-        print("Pick the credential definition that you want to issue the credential for:")
+        print("Pick the credential definition that you want to offer:")
         # Display list of available credential definitions (Can be retrieved from a Database later, but for now only 3 are available)
         for i in range(len(issuer['credential_definitions'])):
             print(str(i+1) + ': ' + issuer['credential_definitions'][i]['name'])
@@ -227,9 +230,10 @@ async def send_credential_offer():
     # 2. Prepare the offer:
     cred_offer = \
         await anoncreds.issuer_create_credential_offer(issuer['wallet'], cred_def_id)
-    print(cred_offer)
 
     # 3. Send credential offer to desired client -- HOW???
+    print('Credential offer ready. Send the following to the issuer:\n')
+    print(cred_offer)
 
 #############################################################################
 #############################################################################
