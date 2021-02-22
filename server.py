@@ -15,8 +15,8 @@ from indy.error import AnoncredsCredDefAlreadyExistsError
 import json
 import asyncio
 import os
-import calendar;
-import time, datetime;
+import calendar
+import time, datetime
 
 # MAIN PARAMETERS
 pool_name = 'STN'
@@ -94,6 +94,16 @@ async def ready():
         #############################################################################
         else:
             print("Invalid choice. Try again.")
+    #############################################################################
+    # Close Server Application
+    print("Close and Delete wallet")
+    await wallet.close_wallet(issuer['wallet'])
+    await wallet.delete_wallet(wallet_config("delete", issuer['wallet_config']),
+                               wallet_credentials("delete", issuer['wallet_credentials']))
+
+    print("Close and Delete pool")
+    await pool.close_pool_ledger(issuer['pool'])
+    await pool.delete_pool_ledger_config(pool_name)
 #############################################################################    
 #############################################################################
 async def setup():
@@ -201,6 +211,25 @@ def read_schema_attributes():
 #############################################################################
 async def send_credential_offer():
     print("---------------------------------SEND A CREDENTIAL OFFER TO CLIENT------------------------------")
+    # 1. Choose the credential offer you want to offer the credential from
+    # from the list of available credential definitions: issuer['credential definitions']
+    x = 0 # variable to hold user input
+    while int(x) < 1 or int(x) > len(issuer['credential_definitions']):
+        print("Pick the credential definition that you want to issue the credential for:")
+        # Display list of available credential definitions (Can be retrieved from a Database later, but for now only 3 are available)
+        for i in range(len(issuer['credential_definitions'])):
+            print(str(i+1) + ': ' + issuer['credential_definitions'][i]['name'])
+        x = input('Please enter any value between 1 and ' + str(len(issuer['credential_definitions'])) + ': ')
+    
+    index = int(x) -1
+    cred_def_id = issuer['credential_definitions'][index]['id']
+
+    # 2. Prepare the offer:
+    cred_offer = \
+        await anoncreds.issuer_create_credential_offer(issuer['wallet'], cred_def_id)
+    print(cred_offer)
+
+    # 3. Send credential offer to desired client -- HOW???
 
 #############################################################################
 #############################################################################
