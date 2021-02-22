@@ -68,6 +68,12 @@ issuer['credential_definitions']= \
     }
 ]
 
+# List of offers made by the issuer 
+# It is needed to cross validate with credential requests when issuing creds
+# It is a list of json objects; each looking like this: 
+# {'prover_did': 'xxxx', 'offer':'xxxxxxx', 'issued_already': False}
+issuer['offers'] = []
+
 async def ready():
     await setup()
     # READY STATE: Issuer connected to pool and their wallet is active
@@ -76,10 +82,11 @@ async def ready():
         print("\nIssuer in Ready State. ==========================================\n")
         print("What do you want to do:")
         choice = input(
-            "1. Create a new schema\n"+
-            "2. Create a new credential defenition\n"+
-            "3. Send credential offer\n"+
-            "4. Revoke a credential\n"+
+            "1. Create a new schema\n" +
+            "2. Create a new credential defenition\n" +
+            "3. Make a credential offer\n" +
+            "4. Issue a credential\n" +
+            "4. Revoke a credential\n" +
             "0. Shut down server\n\nYour choice: "
         )
     #############################################################################
@@ -89,9 +96,11 @@ async def ready():
         elif choice == '2':         # 2. Create credential defenition
             await create_credential_definiton()
         #############################################################################
-        elif choice == '3':         # 3. Send credential offer
-            await send_credential_offer()
+        elif choice == '3':         # 3. Make a credential offer
+            await make_credential_offer()
         #############################################################################
+        elif choice == '4':         # 4. Issue a credential
+            await issue_credential()
         else:
             if choice != '0':
                 print("Invalid choice. Try again.")
@@ -109,6 +118,66 @@ async def ready():
     await pool.delete_pool_ledger_config(pool_name)
 #############################################################################    
 #############################################################################
+async def issue_credential():
+    # 1. Get credential req
+    #cred_req_str = input("Paste the credential request client generated here: \n")
+    #cred_req_object = json.loads(cred_req_str)
+    # OR 
+    cred_req_object = {"prover_did":"UBcJYE4KfYQRtfs9iFQNSG","cred_def_id":"N5woRhHcnE7BBh3FwsPqFJ:3:CL:188417:testdef","blinded_ms":{"u":"47521476965290211374270432462368226624383234061388917804374207127216576540952004431208190870848108349870693744510995725382765546850435080498861989945498885367083345753289319597564134050739400560004998818038450975715784935986378918216952249376678999775765159268604545928908900875521688151309880225476563814758113898170475116802249150346074290596148476014794277262959884147380656281629279495995307633640007007124254317262016464629816147794716480003831089576782544111195733291219035930632720637865708260446301731607815219764297384482361836352618324323824203418075777159291906428958132243931988279818877393996200364780922","ur":null,"hidden_attributes":["master_secret"],"committed_attributes":{}},"blinded_ms_correctness_proof":{"c":"84085714036536498745585748659712744068540653970740551014362308218855831484555","v_dash_cap":"691983772512393721362674173730872019095464438895042769555276799120104699881654489200515964538063797960270520534461679650968270643219023942476955333715450560079985608330169948388902812267987783589738329429154968014627365555906907620847853177490425493796965992930668357274973431309799613387989003742269121109070636249173927620672794836974870579305394421524812622681287284262663471301105283430876510206553141305780099678468760311672773959399332461377463007146460397524877630889181563656738535736695524730917583466914710948836457530426829977007032400265452968422567987205783640198358192346426264901260415941749982969346832831307772245480036284515693217818985495910593017750419497548883390013485696220991648963125185644622","m_caps":{"master_secret":"2493512856104772175863915262549715925421352219524344566042047105435362830049190622292714129390991237049981169554179114404107683324668648917583219662046967208395817712527384429075"},"r_caps":{}},"nonce":"308185308881584552912073"}
+    cred_req_str = json.dumps(cred_req_object)
+    
+    # 2. Prepare Credential Values 
+    cred_values = json.dumps({
+        "first_name": {"raw": "Alice", "encoded": "1139481716457488690172217916278103335"},
+        "last_name": {"raw": "Garcia", "encoded": "5321642780241790123587902456789123452"},
+        "degree": {"raw": "Bachelor of Science, Marketing", "encoded": "12434523576212321"},
+        "status": {"raw": "graduated", "encoded": "2213454313412354"},
+        "ssn": {"raw": "123-45-6789", "encoded": "3124141231422543541"},
+        "year": {"raw": "2015", "encoded": "2015"},
+        "average": {"raw": "5", "encoded": "5"}
+    })
+
+    # 3. Retrieve matching offer
+    cred_offer = find_matching_offer(cred_req_object['prover_did'])
+
+    # 4. Create the credential
+    credential, _, _ = \
+        await anoncreds.issuer_create_credential(issuer['wallet'], cred_offer,
+                                                cred_request,
+                                                cred_values, None, None)
+
+    # 5. Send Credential to client
+    print('Credential issued. Please keep the following information in a safe place:')
+    print(credential)
+#############################################################################    
+#############################################################################
+def find_matching_offer(prover_did, cred_def_id):
+    # This function returns the offer sent out earlier to the giver DID
+    # This helps cross validate the offer(sent earlier) with the recieved credential request
+    # to ensure that only the meant DID recieves the credential
+
+    # An entry in issuer['offers'] looks like this:
+    # {'prover_did': 'xxxx', 'offer':'xxxxxxx', 'issued_already': False}
+
+    # Find offers that have: 
+        # matching prover_did AND 
+        # matching cred_def_id in the offer AND 
+        # NOT been issued yet (Or, check Business Rules on re-issuing lost credentials...)
+
+    offers = list(
+        filter(lambda offer: \
+            (offer['prover_did'] == prover_did and \
+                json.loads(offer['offer'])['cred_def_id'] == cred_def_id and \
+                    bool(offer['issued_already']) == False), issuer['offers']))
+
+    if len(offers) > 1:
+        print('Found multiple offers for prover (' + prover_did + '):'
+        for i in range(len(offers)):
+            print(str(i+1) + str(json.loads(offers[i]['offer'])['cred_def_id']))
+        choice = int(input('Please enter the number for the offer that matches the request: ')) - 1
+        offer = offers[choice]
+    
+
 async def setup():
     # 1. Create the pool if it doesn't exist
     try:
@@ -212,8 +281,8 @@ def read_schema_attributes():
     return attr
 #############################################################################
 #############################################################################
-async def send_credential_offer():
-    print("---------------------------------SEND A CREDENTIAL OFFER TO CLIENT------------------------------")
+async def make_credential_offer():
+    print("---------------------------------MAKE A CREDENTIAL OFFER TO CLIENT------------------------------")
     # 1. Choose the credential offer you want to offer the credential from
     # from the list of available credential definitions: issuer['credential definitions']
     x = 0 # variable to hold user input
@@ -226,14 +295,20 @@ async def send_credential_offer():
     
     index = int(x) -1
     cred_def_id = issuer['credential_definitions'][index]['id']
-
+    print(cred_def_id)
     # 2. Prepare the offer:
     cred_offer = \
         await anoncreds.issuer_create_credential_offer(issuer['wallet'], cred_def_id)
 
-    # 3. Send credential offer to desired client -- HOW???
-    print('Credential offer ready. Send the following to the issuer:\n')
+    # 3. Store offer with target DID for future cross validation
+    print('Credential offer ready.')
+    prover_did = input('Enter the DID of the prover for whom this offer is intended: ')
+    issuer['offers'].append({'prover_did': prover_did, 'offer':cred_offer, 'issued_already': False})
+
+    # 4. Send credential offer to desired client -- HOW??? Brainstorm
+    print('Send the following to the target prover:\n')
     print(cred_offer)
+
 
 #############################################################################
 #############################################################################
