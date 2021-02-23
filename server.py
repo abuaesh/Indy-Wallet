@@ -138,22 +138,28 @@ async def issue_credential():
     else:
         print('Offer for this request found.')
         # 3. Prepare Credential Values 
-        cred_values = get_cred_values(json.loads(cred_offer['offer'])['schema_id'])
+        cred_values = await get_cred_values(json.loads(cred_offer['offer'])['schema_id'])
+
+
+        print('Parameters:\n'+str(type(json.dumps(cred_offer)))+'\n'+str(type(cred_req_str))+'\n'+str(type(json.dumps(cred_values))))
+
+
 
         # 4. Create the credential
         credential, _, _ = \
-            await anoncreds.issuer_create_credential(issuer['wallet'], cred_offer,
+            await anoncreds.issuer_create_credential(issuer['wallet'], json.dumps(cred_offer),
                                                     cred_req_str,
-                                                    cred_values, None, None)
+                                                    json.dumps(cred_values), None, None)
 
         # 5. Send Credential to client
         print('Credential issued. Please keep the following information in a safe place:')
         print(credential)
 #############################################################################    
 #############################################################################
-def get_cred_values(schema_id):
-    schema = get_schema(issuer['pool'], issuer['did'], schema_id)
-    attributes = json.loads(schema)['attrNames']
+async def get_cred_values(schema_id):
+    schema_tuple = await get_schema(issuer['pool'], issuer['did'], schema_id)
+    #Above statemnt stores a tuple that looks like this: ('schema_id_str','schema_str')
+    attributes = json.loads(schema_tuple[1])['attrNames']
     # Construct cred_values json
     """ This is how credential values should look like:
         cred_values = json.dumps({
@@ -169,8 +175,11 @@ def get_cred_values(schema_id):
     for a in attributes:
         raw = input('Enter the value for attribute (' + a + '): ')
         encoded = encode(raw)
-        item = {a: {"raw": raw, "encoded": encoded}}
+        item =  {"encoded": encoded, "raw": raw}
         cred_values[a] = item
+
+    print('Credential Values ready.\n')
+    print(cred_values)
 
     return cred_values
 #############################################################################    
@@ -346,7 +355,10 @@ async def make_credential_offer():
         for i in range(len(issuer['credential_definitions'])):
             print(str(i+1) + ': ' + issuer['credential_definitions'][i]['name'])
         x = input('Please enter any value between 1 and ' + str(len(issuer['credential_definitions'])) + ': ')
-        invalid_x = int(x) < 1 or int(x) > len(issuer['credential_definitions'])
+        try:
+            invalid_x = int(x) < 1 or int(x) > len(issuer['credential_definitions'])
+        except ValueError:
+            invalid_x = True
         if invalid_x:
             print('Invalid choice. Try again.')
     
@@ -359,8 +371,8 @@ async def make_credential_offer():
         cred_offer = \
             await anoncreds.issuer_create_credential_offer(issuer['wallet'], cred_def_id)
     except WalletItemNotFound:
-        print('Sorry, Couldn\'t find this credential definition ('+ cred_def_id +\
-            ') in your wallet. Try creadting a new one.')
+        print('Sorry, Couldn\'t find this credential definition "'+ cred_def_id +\
+            '" in your wallet. Try creadting a new one.')
         return
 
     # 3. Store offer with target DID for future cross validation
@@ -390,7 +402,10 @@ async def create_credential_definiton():
         for i in range(len(issuer['schemata'])):
             print(str(i+1) + ': ' + issuer['schemata'][i]['name'])
         x = input('Please enter any value between 1 and ' + str(len(issuer['schemata'])) + ': ')
-        invalid_x = int(x) < 1 or int(x) > len(issuer['schemata'])
+        try:
+            invalid_x = int(x) < 1 or int(x) > len(issuer['schemata'])
+        except ValueError:
+            invalid_x = True
         if invalid_x:
             print("Invalid choice. Try again.")
     index = int(x) -1
@@ -429,6 +444,7 @@ async def create_credential_definiton():
         print(cred_def)
     except AnoncredsCredDefAlreadyExistsError:
         print("A credential definition already exists in your wallet for this schema.")
+        return 
     #Append to list of credential definitions(consider saving to a DB):
     try:
         issuer['credential_definitions'].append({'id':cred_def_id,'name':json.loads(cred_def)['tag']}) 
