@@ -14,9 +14,8 @@ from indy.error import PoolIncompatibleProtocolVersion, ErrorCode, CommonInvalid
 from indy.error import AnoncredsCredDefAlreadyExistsError
 import json
 import asyncio
-import os
-import calendar
-import time, datetime
+import os, hashlib
+import calendar, time, datetime
 
 # MAIN PARAMETERS
 pool_name = 'STN'
@@ -113,14 +112,14 @@ async def ready():
                 print("Shutting down..")
     #############################################################################
     # Close Server Application
-    print("Close and Delete wallet")
+    """print("Close and Delete wallet")
     await wallet.close_wallet(issuer['wallet'])
     await wallet.delete_wallet(wallet_config("delete", issuer['wallet_config']),
                                wallet_credentials("delete", issuer['wallet_credentials']))
 
     print("Close and Delete pool")
     await pool.close_pool_ledger(issuer['pool'])
-    await pool.delete_pool_ledger_config(pool_name)
+    await pool.delete_pool_ledger_config(pool_name)"""
 #############################################################################    
 #############################################################################
 async def issue_credential():
@@ -134,24 +133,12 @@ async def issue_credential():
     # 2. Retrieve matching offer
     cred_offer = find_matching_offer(cred_req_object['prover_did'], cred_req_object['cred_def_id'])
     if cred_offer == '':
-        print('Sorry, cannot issue credential.')
+        print('Sorry, cannot issue credential. A matching request was not found')
         return
     else:
         print('Offer for this request found.')
         # 3. Prepare Credential Values 
-        cred_values = get_cred_values(json.loads(cred_offer)['schema_id'])
-        """
-        This is how credential values should look like:
-        cred_values = json.dumps({
-            "first_name": {"raw": "Alice", "encoded": "1139481716457488690172217916278103335"},
-            "last_name": {"raw": "Garcia", "encoded": "5321642780241790123587902456789123452"},
-            "degree": {"raw": "Bachelor of Science, Marketing", "encoded": "12434523576212321"},
-            "status": {"raw": "graduated", "encoded": "2213454313412354"},
-            "ssn": {"raw": "123-45-6789", "encoded": "3124141231422543541"},
-            "year": {"raw": "2015", "encoded": "2015"},
-            "average": {"raw": "5", "encoded": "5"}
-        })
-        """
+        cred_values = get_cred_values(json.loads(cred_offer['offer'])['schema_id'])
 
         # 4. Create the credential
         credential, _, _ = \
@@ -164,6 +151,52 @@ async def issue_credential():
         print(credential)
 #############################################################################    
 #############################################################################
+def get_cred_values(schema_id):
+    schema = get_schema(issuer['pool'], issuer['did'], schema_id)
+    attributes = json.loads(schema)['attrNames']
+    # Construct cred_values json
+    """ This is how credential values should look like:
+        cred_values = json.dumps({
+            "first_name": {"raw": "Alice", "encoded": "1139481716457488690172217916278103335"},
+            "last_name": {"raw": "Garcia", "encoded": "5321642780241790123587902456789123452"},
+            "degree": {"raw": "Bachelor of Science, Marketing", "encoded": "12434523576212321"},
+            "status": {"raw": "graduated", "encoded": "2213454313412354"},
+            "ssn": {"raw": "123-45-6789", "encoded": "3124141231422543541"},
+            "year": {"raw": "2015", "encoded": "2015"},
+            "average": {"raw": "5", "encoded": "5"}
+        })"""
+    cred_values = {}
+    for a in attributes:
+        raw = input('Enter the value for attribute (' + a + '): ')
+        encoded = encode(raw)
+        item = {a: {"raw": raw, "encoded": encoded}}
+        cred_values[a] = item
+
+    return cred_values
+#############################################################################    
+############################################################################# 
+def encode(val):
+    # Recommended encoding trchnique of attributes:
+    """ 
+    -keep any 32-bit integer as is
+    -for data of any other type:
+        1-convert to string (string "None" for null)
+        2-encode via utf-8 to bytes
+        3-apply SHA-256 to digest the bytes
+        4-convert the resulting digest bytes to big integer assuming sha256 output is big-endian
+        5-if big integer conversion requires little endian, reverse the byte array
+        6-stringify the integer as a decimal. 
+    """
+    val = str(val)      #1
+    
+    if val == '':       #2.1
+        val = 'None'
+    val.encode("utf-8") #2.2
+    
+    val = hashlib.sha256(val.encode()).hexdigest()  
+    return val
+#############################################################################    
+#############################################################################    
 def find_matching_offer(prover_did, cred_def_id):
     # This function returns the offer sent out earlier to the giver DID
     # This helps cross validate the offer(sent earlier) with the recieved credential request
@@ -196,8 +229,8 @@ def find_matching_offer(prover_did, cred_def_id):
             'This could be because a credential has been alreay issued by this offer')
 
     return offer
-    
-
+#############################################################################    
+#############################################################################    
 async def setup():
     # 1. Create the pool if it doesn't exist
     try:
@@ -306,23 +339,30 @@ async def make_credential_offer():
     # 1. Choose the credential offer you want to offer the credential from
     # from the list of available credential definitions: issuer['credential definitions']
     x = 0 # variable to hold user input
-    while int(x) < 1 or int(x) > len(issuer['credential_definitions']):
+    valid_x = False
+    while not valid_x:
         print("Pick the credential definition that you want to offer:")
         # Display list of available credential definitions (Can be retrieved from a Database later, but for now only 3 are available)
         for i in range(len(issuer['credential_definitions'])):
             print(str(i+1) + ': ' + issuer['credential_definitions'][i]['name'])
         x = input('Please enter any value between 1 and ' + str(len(issuer['credential_definitions'])) + ': ')
+        valid_x = int(x) < 1 or int(x) > len(issuer['credential_definitions'])
+        if not valid_x:
+            print('Invalid choice. Try again.')
     
     index = int(x) -1
     cred_def_id = issuer['credential_definitions'][index]['id']
     print(cred_def_id)
+    
     # 2. Prepare the offer:
     cred_offer = \
         await anoncreds.issuer_create_credential_offer(issuer['wallet'], cred_def_id)
 
     # 3. Store offer with target DID for future cross validation
     print('Credential offer ready.')
-    prover_did = input('Enter the DID of the prover for whom this offer is intended: ')
+    #prover_did = input('Enter the DID of the prover for whom this offer is intended: ')
+    # For testing convenience-REMOVE LATER:
+    prover_did = 'UBcJYE4KfYQRtfs9iFQNSG'
     issuer['offers'].append({'prover_did': prover_did, 'offer':cred_offer, 'issued_already': False})
 
     # 4. Send credential offer to desired client -- HOW??? Brainstorm
@@ -338,14 +378,16 @@ async def create_credential_definiton():
     # from the list of available schemata: issuer['schemata']
     
     x = 0 #variable to hold user input
-    
-    while int(x) < 1 or int(x) > len(issuer['schemata']):
+    valid_x = False
+    while not valid_x:
         print("Pick the schema that you want to create the credential defenition for:")
         # Display list of available schemata (Can be retrieved from a Database later, but for now only 3 are available)
         for i in range(len(issuer['schemata'])):
             print(str(i+1) + ': ' + issuer['schemata'][i]['name'])
         x = input('Please enter any value between 1 and ' + str(len(issuer['schemata'])) + ': ')
-    
+        valid_x = int(x) < 1 or int(x) > len(issuer['schemata'])
+        if not valid_x:
+            print("Invalid choice. Try again.")
     index = int(x) -1
     schema_id = issuer['schemata'][index]['id']
 
