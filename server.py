@@ -11,7 +11,7 @@ from indy import pool, ledger, wallet, did, crypto, anoncreds
 from indy.error import IndyError
 from indy.error import PoolLedgerConfigAlreadyExistsError, DidAlreadyExistsError
 from indy.error import PoolIncompatibleProtocolVersion, ErrorCode, CommonInvalidStructure
-from indy.error import AnoncredsCredDefAlreadyExistsError
+from indy.error import AnoncredsCredDefAlreadyExistsError, WalletItemNotFound
 import json
 import asyncio
 import os, hashlib
@@ -133,7 +133,7 @@ async def issue_credential():
     # 2. Retrieve matching offer
     cred_offer = find_matching_offer(cred_req_object['prover_did'], cred_req_object['cred_def_id'])
     if cred_offer == '':
-        print('Sorry, cannot issue credential. A matching request was not found')
+        print('Sorry, cannot issue credential. A matching request was not found.')
         return
     else:
         print('Offer for this request found.')
@@ -339,15 +339,15 @@ async def make_credential_offer():
     # 1. Choose the credential offer you want to offer the credential from
     # from the list of available credential definitions: issuer['credential definitions']
     x = 0 # variable to hold user input
-    valid_x = False
-    while not valid_x:
+    invalid_x = True
+    while invalid_x:
         print("Pick the credential definition that you want to offer:")
         # Display list of available credential definitions (Can be retrieved from a Database later, but for now only 3 are available)
         for i in range(len(issuer['credential_definitions'])):
             print(str(i+1) + ': ' + issuer['credential_definitions'][i]['name'])
         x = input('Please enter any value between 1 and ' + str(len(issuer['credential_definitions'])) + ': ')
-        valid_x = int(x) < 1 or int(x) > len(issuer['credential_definitions'])
-        if not valid_x:
+        invalid_x = int(x) < 1 or int(x) > len(issuer['credential_definitions'])
+        if invalid_x:
             print('Invalid choice. Try again.')
     
     index = int(x) -1
@@ -355,8 +355,13 @@ async def make_credential_offer():
     print(cred_def_id)
     
     # 2. Prepare the offer:
-    cred_offer = \
-        await anoncreds.issuer_create_credential_offer(issuer['wallet'], cred_def_id)
+    try:
+        cred_offer = \
+            await anoncreds.issuer_create_credential_offer(issuer['wallet'], cred_def_id)
+    except WalletItemNotFound:
+        print('Sorry, Couldn\'t find this credential definition ('+ cred_def_id +\
+            ') in your wallet. Try creadting a new one.')
+        return
 
     # 3. Store offer with target DID for future cross validation
     print('Credential offer ready.')
@@ -378,15 +383,15 @@ async def create_credential_definiton():
     # from the list of available schemata: issuer['schemata']
     
     x = 0 #variable to hold user input
-    valid_x = False
-    while not valid_x:
+    invalid_x = True
+    while invalid_x:
         print("Pick the schema that you want to create the credential defenition for:")
         # Display list of available schemata (Can be retrieved from a Database later, but for now only 3 are available)
         for i in range(len(issuer['schemata'])):
             print(str(i+1) + ': ' + issuer['schemata'][i]['name'])
         x = input('Please enter any value between 1 and ' + str(len(issuer['schemata'])) + ': ')
-        valid_x = int(x) < 1 or int(x) > len(issuer['schemata'])
-        if not valid_x:
+        invalid_x = int(x) < 1 or int(x) > len(issuer['schemata'])
+        if invalid_x:
             print("Invalid choice. Try again.")
     index = int(x) -1
     schema_id = issuer['schemata'][index]['id']
@@ -425,7 +430,10 @@ async def create_credential_definiton():
     except AnoncredsCredDefAlreadyExistsError:
         print("A credential definition already exists in your wallet for this schema.")
     #Append to list of credential definitions(consider saving to a DB):
-    issuer['credential_definitions'].append({'id':cred_def_id,'name':json.loads(cred_def)['tag']}) 
+    try:
+        issuer['credential_definitions'].append({'id':cred_def_id,'name':json.loads(cred_def)['tag']}) 
+    except UnboundLocalError:
+        pass
 
     print("3. Send new credential definition to ledger")
     cred_def_request = await ledger.build_cred_def_request(issuer['did'], cred_def)
