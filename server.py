@@ -175,7 +175,7 @@ async def get_cred_values(schema_id):
     for a in attributes:
         raw = input('Enter the value for attribute (' + a + '): ')
         encoded = encode(raw)
-        item =  {"encoded": encoded, "raw": raw}
+        item =  {"raw": raw, "encoded": encoded}
         cred_values[a] = item
 
     print('Credential Values ready.\n')
@@ -197,12 +197,12 @@ def encode(val):
         6-stringify the integer as a decimal. 
     """
     val = str(val)      #1
-    
-    if val == '':       #2.1
+    if val == '':       #1.2
         val = 'None'
-    val.encode("utf-8") #2.2
-    
-    val = hashlib.sha256(val.encode()).hexdigest()  
+    val.encode("utf-8") #2
+    val = hashlib.sha256(val.encode()).digest() #3
+    #Not sure about 5 and 6
+    val = str(val)      #6
     return val
 #############################################################################    
 #############################################################################    
