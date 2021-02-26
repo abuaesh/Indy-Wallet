@@ -77,7 +77,14 @@ async def accept_credential_offer():
 
     # 1. Get credential offer
     cred_offer_str = input("Paste the credential offer that you recieved here: \n")
-    cred_offer_object = json.loads(cred_offer_str)
+    invalid_offer = True
+    while invalid_offer:
+        try:
+            cred_offer_object = json.loads(cred_offer_str)
+            invalid_offer = False
+        except JSONDecodeError:
+            print('Invalid offer. Try again.')
+            invalid_offer = True
     # OR (For testing only)
     #cred_offer_object = PASTE OFFER HERE
     #cred_offer_str = json.dumps(cred_offer_object)

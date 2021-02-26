@@ -13,6 +13,7 @@ from indy.error import PoolLedgerConfigAlreadyExistsError, DidAlreadyExistsError
 from indy.error import PoolIncompatibleProtocolVersion, ErrorCode, CommonInvalidStructure
 from indy.error import AnoncredsCredDefAlreadyExistsError, WalletItemNotFound
 import json
+from json.decoder import JSONDecodeError
 import asyncio
 import os, hashlib
 import calendar, time, datetime
@@ -125,7 +126,14 @@ async def ready():
 async def issue_credential():
     # 1. Get credential req
     cred_req_str = input("Paste the credential request client generated here: \n")
-    cred_req_object = json.loads(cred_req_str)
+    invalid_req = True
+    while invalid_req:
+        try:
+            cred_req_object = json.loads(cred_req_str)
+            invalid_req = False
+        except JSONDecodeError:
+            print('Invalid request. Try again.')
+            invalid_req = True
     # OR 
     #cred_req_object = #PASTE REQUEST HERE#
     #cred_req_str = json.dumps(cred_req_object)
@@ -138,16 +146,17 @@ async def issue_credential():
     else:
         print('Offer for this request found.')
         # 3. Prepare Credential Values 
-        cred_values = await get_cred_values(json.loads(cred_offer['offer'])['schema_id'])
+        cred_values = await get_cred_values(json.loads(cred_offer)['schema_id'])
 
 
-        print('Parameters:\n'+str(type(json.dumps(cred_offer)))+'\n'+str(type(cred_req_str))+'\n'+str(type(json.dumps(cred_values))))
+        print('Parameters:\n'+str(type(cred_offer))+\
+            '\n\n\n'+cred_req_str+'\n\n\n'+json.dumps(cred_values))
 
 
 
         # 4. Create the credential
         credential, _, _ = \
-            await anoncreds.issuer_create_credential(issuer['wallet'], json.dumps(cred_offer),
+            await anoncreds.issuer_create_credential(issuer['wallet'], cred_offer,
                                                     cred_req_str,
                                                     json.dumps(cred_values), None, None)
 
@@ -200,7 +209,7 @@ def encode(val):
     if val == '':       #1.2
         val = 'None'
     val.encode("utf-8") #2
-    val = hashlib.sha256(val.encode()).digest() #3
+    val = hashlib.sha256(val.encode()).hexdigest() #3
     #Not sure about 5 and 6
     val = str(val)      #6
     return val
@@ -230,13 +239,15 @@ def find_matching_offer(prover_did, cred_def_id):
         for i in range(len(offers)):
             print(str(i+1) + str(json.loads(offers[i]['offer'])['cred_def_id']))
         choice = int(input('Please enter the number for the offer that matches the request: ')) - 1
-        offer = offers[choice]
+        offer = offers[choice]['offer']
     elif len(offers) == 1:
-        offer = offers[0]
+        offer = offers[0]['offer']
     elif len(offers) == 0:
         print('No matching offers found for this request.' +\
             'This could be because a credential has been alreay issued by this offer')
-
+        return ''
+    print('\n\n')
+    print(offer)
     return offer
 #############################################################################    
 #############################################################################    
