@@ -8,12 +8,12 @@
 ##########################################################################
 
 from indy import pool, ledger, wallet, did, crypto, anoncreds
-from indy.error import IndyError
+from indy.error import IndyError, CommonInvalidState
 from indy.error import PoolLedgerConfigAlreadyExistsError, DidAlreadyExistsError
 from indy.error import PoolIncompatibleProtocolVersion, ErrorCode, CommonInvalidStructure
 from indy.error import AnoncredsCredDefAlreadyExistsError, WalletItemNotFound
-import json
 from json.decoder import JSONDecodeError
+import json
 import asyncio
 import os, hashlib
 import calendar, time, datetime
@@ -155,14 +155,18 @@ async def issue_credential():
 
 
         # 4. Create the credential
-        credential, _, _ = \
-            await anoncreds.issuer_create_credential(issuer['wallet'], cred_offer,
+        try:
+            credential, _, _ = \
+                await anoncreds.issuer_create_credential(issuer['wallet'], cred_offer,
                                                     cred_req_str,
                                                     json.dumps(cred_values), None, None)
+        except CommonInvalidState:
+            print('Cannot issue a credential. Are you trying to issue an already issued credential?')
 
         # 5. Send Credential to client
         print('Credential issued. Please keep the following information in a safe place:')
         print(credential)
+        return credential
 #############################################################################    
 #############################################################################
 async def get_cred_values(schema_id):
@@ -237,7 +241,7 @@ def find_matching_offer(prover_did, cred_def_id):
     if len(offers) > 1:
         print('Found multiple offers for prover (' + prover_did + '):')
         for i in range(len(offers)):
-            print(str(i+1) + str(json.loads(offers[i]['offer'])['cred_def_id']))
+            print(str(i+1) + '. ' + str(json.loads(offers[i]['offer'])['cred_def_id']))
         choice = int(input('Please enter the number for the offer that matches the request: ')) - 1
         offer = offers[choice]['offer']
     elif len(offers) == 1:
@@ -383,8 +387,8 @@ async def make_credential_offer():
             await anoncreds.issuer_create_credential_offer(issuer['wallet'], cred_def_id)
     except WalletItemNotFound:
         print('Sorry, Couldn\'t find this credential definition "'+ cred_def_id +\
-            '" in your wallet. Try creadting a new one.')
-        return
+            '" in your wallet. Try creating a new one first.')
+        return ''
 
     # 3. Store offer with target DID for future cross validation
     print('Credential offer ready.')
@@ -397,7 +401,7 @@ async def make_credential_offer():
     print('Send the following to the target prover:\n')
     print(cred_offer)
 
-
+    return cred_offer
 #############################################################################
 #############################################################################
 async def create_credential_definiton():
